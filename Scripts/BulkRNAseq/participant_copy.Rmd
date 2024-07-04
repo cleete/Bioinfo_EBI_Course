@@ -1,0 +1,428 @@
+---
+title: "bulk RNA-seq participant copy"
+author: "This practical was completed by [insert your name here]"
+date: "2024-07-02"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Getting Started
+## Load R libraries
+We'll begin by loading all the necessary libraries that we need to complete our analysis. Check your R and library versions running `sessionInfo()`.
+```{r , warning=F, message=F}
+# For all parts
+library(DESeq2) # a differential gene expression analysis package
+library(airway) # a dataset
+library(edgeR) # for some helper functions
+library(tidyverse) # For ggplot2 and easy manipulation of data
+library(patchwork) # To combine plots
+library(vsn) # Some visualizations
+library(AnnotationDbi) # gene annotation
+library(org.Hs.eg.db) # gene annotation
+library(pheatmap) # heatmaps
+library(ggrepel) # repel labels
+library(sva) # remove unwanted variation
+library(enrichR) # pathway enrichment analysis
+
+options(stringsAsFactors = FALSE) # Set this to deactivate the automatic read-in of characters as factors
+```
+
+# Preparing data for DESeq
+To use *DESeq2* for differential expression, we need to build a *DESeqDataSet* object. 
+
+## Building the DESeqDataSet object from expression matrices
+```{r}
+# Read in the "feature_matrix.csv" as a "gene_counts" object
+gene_counts <- read.csv('data/feature_matrix.csv')
+
+# Make sure the format of the tables are correct - in our case, we want to make the first column "Gene" in the table into the row name
+rownames(gene_counts) <- gene_counts$Gene
+gene_counts$Gene <- NULL
+```
+
+We need to do the same thing for the metadata:
+```{r}
+# First, read in the "metadata.csv" file as a "sample_info" object:
+
+# Next make the "SampleID" column the row names of the sample_info object:
+
+```
+
+## Gathering the count and sample info from the RangedSummarisedExperiment object
+```{r}
+dds = DESeqDataSetFromMatrix(countData = gene_counts,
+                             colData = sample_info,
+                             design = ~ cell + dex)
+```
+
+# QC Steps
+## Filtering lowly expressed genes
+Retain genes with at least 1 count per million (CPM) in at least two samples. 
+```{r}
+dds = dds[ rowSums(edgeR::cpm(counts(dds)) > 1)>=2, ]
+```
+## Normalization
+In the tutor's copy, we show two methods for normalization. For the purpose of this practice, choose 1 to follow along:
+```{r}
+
+```
+Compare a simple log2 transformation of raw counts (after estimating size factors to account for sequencing depth) with your transformed data:
+```{r}
+dds = estimateSizeFactors(dds)
+meanSdPlot(assay(normTransform(dds))) #  log2(n+1) of raw counts
+
+```
+Look at pairwise gene count comparisons between samples
+```{r}
+
+```
+
+# Dimensionality reduction 
+Extract PCs:
+```{r}
+getPCs = function(dds){
+  
+  df = assay(dds)
+  pca = prcomp(t(df), retx = TRUE)
+  
+  percentVar = (pca$sdev)^2 / sum(pca$sdev^2)
+  percentVar = round(100 * percentVar)
+  pcs = as.data.frame(pca$x)
+  pcs = cbind(pcs,colData(dds))
+  pcs = as.data.frame(pcs)
+  pcs = list(pcs, percentVar)
+  
+  names(pcs) = c("pcs","percentVar")
+  return(pcs)
+}
+
+```
+Look at the loadings of the first PC:
+```{r}
+getLoadings = function(dds){
+  
+  df = assay(dds)
+  pca = prcomp(t(df), retx = TRUE)
+  
+  return(pca$rotation)
+}
+
+```
+
+# Run DESeq
+```{r}
+dds = DESeq(dds)
+```
+We can have a look at the dispersion estimates with `plotDispEsts()`:
+```{r}
+
+```
+
+## Inspecting the differential expression results
+Specify the contrasts and extract the results:
+```{r}
+
+```
+
+## Filter the results
+log2FoldChange or padj. We will then pick the FDR and log2FC thresholds at this point - you can always re-do the analysis later if your threshold was too stringent.
+```{r}
+res_condition = results(dds, contrast=c("dex","trt","untrt"), alpha=0.05, lfcThreshold=1)
+```
+
+## Log2 fold change shrinkage
+```{r}
+res_condition_shrink = lfcShrink(dds, 
+                                 contrast=c("dex","trt","untrt"), 
+                                                     type = "normal",
+
+                                 res=res_condition[order(rownames(res_condition)),],
+                                 lfcThreshold = 1)
+```
+Order the results:
+```{r}
+
+```
+
+## Now try to contrast between cells:
+```{r}
+
+```
+
+## Save differentially expressed genes
+```{r}
+# add the gene names again for easier inspection
+res_condition_shrink$symbol = mapIds(org.Hs.eg.db,
+		        keys=row.names(res_condition_shrink),
+		        column="SYMBOL",
+		        keytype="ENSEMBL",
+		        multiVals="first")
+res_condition_shrink$Ensembl_ID = row.names(res_condition_shrink)
+
+# save the file:
+
+```
+
+## Visualization of the differential expression results
+```{r}
+# Getting the count table in ggplot-friendly format for your gene of choice:
+geneCounts = plotCounts(dds, gene=res_condition_shrink$Ensembl_ID[1], intgroup=c("dex","cell"), returnData=TRUE)
+
+# Plot:
+ggplot(geneCounts, aes(x=dex, y=count, color=cell)) +
+  scale_y_log10() +
+  geom_point(position=position_jitter(width=.1,height=0), size=3) + 
+  geom_text_repel(aes(label =  cell)) +
+  theme_bw() + 
+  ggtitle( res_condition_shrink$symbol[1]) + 
+  ylab("log10(counts)")
+```
+
+Now try the same code for the 1800th gene:
+```{r}
+
+```
+
+look at genes that vary between cell lines.
+```{r}
+# ordering and mapping gene names
+res_cell = results(dds, contrast=c("cell", "N080611", "N61311"))
+res_cell = lfcShrink(dds, contrast=c("cell", "N080611", "N61311"), 
+                                         type = "normal",
+                                 res=res_cell[order(rownames(res_cell)),])
+
+res_cell = res_cell[order(res_cell$padj),]
+res_cell$symbol = mapIds(org.Hs.eg.db,
+		        keys=row.names(res_cell),
+		        column="SYMBOL",
+		        keytype="ENSEMBL",
+		        multiVals="first")
+res_cell$Ensembl_ID = row.names(res_cell)
+
+# Get the counts for the first gene and plot:
+
+```
+
+Representing a few genes at the same time
+```{r}
+# We can't use plotCounts to get the counts of several genes, so we use the following 
+norm_counts = as.data.frame(counts(dds, normalized=TRUE)[res_condition_shrink$Ensembl_ID[1:10], ])
+norm_counts$Ensembl_ID = rownames(norm_counts)
+
+# Getting to long format
+norm_counts = norm_counts %>%
+  as.tibble() %>%
+  pivot_longer(cols = starts_with("SRR"),names_to = "Run",values_to = "Normalised_counts")
+
+# Mapping gene names
+norm_counts$symbol = mapIds(org.Hs.eg.db,
+		        keys=norm_counts$Ensembl_ID,
+		        column="SYMBOL",
+		        keytype="ENSEMBL",
+		        multiVals="first")  
+
+# Adding metadata
+df = merge(norm_counts,colData(dds),by="Run")
+
+df %>% 
+  as.data.frame() %>%
+  ggplot( aes(x=symbol, y=Normalised_counts, color=dex)) +
+  scale_y_log10() +
+  geom_point(position=position_jitter(width=.1,height=0), size=3) + 
+  theme_bw() + 
+  ylab("log10(counts)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+	theme(plot.title = element_text(hjust = 0.5))
+```
+
+Plot an MA plot:
+```{r}
+
+```
+
+Plot a volcano plot:
+```{r}
+# adding another section for coloring based on p-value and log2FC threshold with ggplot
+res_color =  res_condition_shrink %>% 
+              as.tibble() %>%
+                  mutate(color = padj < 0.01 & abs(log2FoldChange) >= 1)
+res_color[which(is.na(res_color$color)),"color"] = FALSE # setting the NAs to FALSE
+
+# adding labels to plot
+res_color = res_color %>% 
+  arrange(padj) %>% 
+  mutate(labels = "")
+  
+res_color$labels[1:10] = res_color$symbol[1:10]
+
+ggplot(res_color) +
+        geom_point(aes(x = log2FoldChange, y = -log10(padj), colour = color, label = labels)) +
+        geom_text_repel(aes(label = labels, x = log2FoldChange, y = -log10(padj))) +
+        ggtitle("Mov10 overexpression") +
+        xlab("log2 fold change") + 
+        ylab("-log10 adjusted p-value") +
+        theme(legend.position = "none",
+              plot.title = element_text(size = rel(1.5), hjust = 0.5),
+              axis.title = element_text(size = rel(1.25)))  +
+  theme_bw()
+```
+
+Plot a heatmap
+```{r}
+mat = as.data.frame(counts(dds, normalized=TRUE)[res_condition_shrink$Ensembl_ID[1:10], ])
+mat = log10(mat)
+mat = t(scale(t(mat))) # Need to scale per gene, hence the transposition
+rownames(mat) = mapIds(org.Hs.eg.db,
+		        keys=row.names(mat),
+		        column="SYMBOL",
+		        keytype="ENSEMBL",
+		        multiVals="first")
+df = as.data.frame(colData(dds_rlog)[,c("cell","dex")])
+pheatmap(mat, annotation_col=df)
+```
+
+# Regressing “unwanted” variation and batch correction
+Calculate the number of surrogate/latent variables (hidden batch effects). We can let SVA estimate their number, or we can specify them in *n.sv* within `svaseq()`:
+```{r}
+mat = counts(dds, normalized=TRUE)
+mod = model.matrix(~ dex, colData(dds))
+mod0 = model.matrix(~ 1, colData(dds))
+svseq = svaseq(mat, mod, mod0)
+str(svseq)
+```
+
+Include this information in the design to perform the differential expression analysis:
+```{r}
+ddssva = dds # making a copy
+ddssva$SV1 = svseq$sv[,1]
+ddssva$SV2 = svseq$sv[,2]
+ddssva$SV3 = svseq$sv[,3]
+design(ddssva) = ~ SV1 + SV2 + SV3 + dex
+
+ddssva = DESeq(ddssva)
+res_sva = results(ddssva, contrast=c("dex","trt","untrt"),
+                  lfcThreshold = 1, alpha = 0.05)
+res_sva = lfcShrink(ddssva, 
+                                 contrast=c("dex","trt","untrt"), 
+                    type = "normal",
+                                 res=res_sva[order(rownames(res_sva)),],
+                                 lfcThreshold = 1)
+res_sva = res_sva[order(res_sva$padj),]
+
+res_sva$symbol = mapIds(org.Hs.eg.db,
+		        keys=row.names(res_sva),
+		        column="SYMBOL",
+		        keytype="ENSEMBL",
+		        multiVals="first")
+res_sva$Ensembl_ID = row.names(res_sva)
+```
+
+Compare the result tables for the design that explicitly includes the cell effect, the design with SVA latent factors and the design that only includes the treatment:
+```{r}
+dds_reduced = dds
+design(dds_reduced) = ~  dex
+
+dds_reduced = DESeq(dds_reduced)
+res_reduced = results(dds_reduced, contrast=c("dex","trt","untrt"),
+                  lfcThreshold = 1, alpha = 0.05)
+res_reduced = lfcShrink(dds_reduced, 
+                                 contrast=c("dex","trt","untrt"), 
+                                            type = "normal",
+
+                                 res=res_reduced[order(rownames(res_reduced)),],
+                                 lfcThreshold = 1)
+res_reduced = res_reduced[order(res_reduced$padj),]
+
+res_reduced$symbol = mapIds(org.Hs.eg.db,
+		        keys=row.names(res_reduced),
+		        column="SYMBOL",
+		        keytype="ENSEMBL",
+		        multiVals="first")
+res_reduced$Ensembl_ID = row.names(res_reduced)
+
+# Now compare all three results
+res_condition_shrink
+res_sva
+res_reduced
+```
+
+Using the `ComBat()` function within *SVA* to explicitly adjust the expression matrix for known batch effects, for example to get a PCA corrected for cell line variability:
+```{r}
+cell = colData(dds_vst)$cell
+# We use the normalised data, as previously with PCA
+adjusted = ComBat(assay(dds_vst), batch=cell)
+
+
+  df = adjusted
+  pca = prcomp(t(df), retx = TRUE)
+  
+  percentVar = (pca$sdev)^2 / sum(pca$sdev^2)
+  percentVar = round(100 * percentVar)
+  pcs = as.data.frame(pca$x)
+  pcs = cbind(pcs,colData(dds_rlog))
+  pcs = as.data.frame(pcs)
+  pcs = list(pcs, percentVar)
+  
+  names(pcs) = c("pcs","percentVar")
+
+
+ggplot(pcs$pcs, aes(PC1, PC2, color=dex, shape=cell)) +   geom_point(size=3) +
+   xlab(paste0("PC1: ",pcadata_rlog$percentVar[1],"% variance")) +
+   ylab(paste0("PC2: ",pcadata_rlog$percentVar[2],"% variance")) + theme_bw()
+```
+
+# Pathway Enrichment Analysis
+To check and list the different enrichR sites:
+```{r}
+
+```
+
+Set the site to human genes for our practical:
+```{r}
+setEnrichrSite("Enrichr")
+```
+
+You can list the databases available in the package. Here, we save it into an object so we can view it.
+```{r}
+
+```
+
+## Run enrichR
+Let's choose the latest reactome:
+```{r}
+dbs <- c("Reactome_2022")
+```
+
+## Selecting the genes to test
+Subset these genes into an object in the following manner:
+```{r}
+sig_de_genes <- res_condition_shrink %>%  
+  as.data.frame() %>%
+  filter(padj<0.05 & log2FoldChange > 1)
+```
+<details>
+  <summary>**Exercise**</summary>
+  
+* We saved the gene subset as a text file in the previous practical. Are you able to load it into this run?
+* How would we filter to different cutoffs?
+
+</details>
+
+## Test the genes
+```{r}
+enriched <- enrichr(sig_de_genes$symbol, dbs)
+```
+
+## Visualization
+Extract the results as a table:
+```{r}
+
+```
+
+Plot output with the plotting function from the package:
+```{r}
+
+```

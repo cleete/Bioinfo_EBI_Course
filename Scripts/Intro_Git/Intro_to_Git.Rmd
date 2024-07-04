@@ -1,0 +1,353 @@
+---
+title: "An introduction to Git"
+author: "Jiawei Wang & Jinzheng Ren"
+date: "2024-06-24"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Overview
+
+Some of the materials originate in the [Git and GitHub tutorial](https://github.com/santanaw/primers4predoc-git) and [GitHub Docs](https://docs.github.com/en/authentication/connecting-to-github-with-ssh) with some of the text copied with a few edits.
+
+In this tutorial, we will explore the basics of using Git and GitHub. Some of the content has been adapted with minor edits to better suit our learning objectives.
+
+### Local configuration
+
+Set local user information (username and email) for Git in your VM. Every commit in Git will use this information.
+
+```         
+git config --global user.name 'Jiawei Wang'
+git config --global user.email jiawei.nohup.cc@gmail.com
+git config --global core.editor vim
+```
+
+### Create a local repository
+
+Initialize the local directory as a Git repository. By default, the initial branch is called `main:`
+
+```         
+mkdir my_Bioinformatics_for_Immunologists
+cd my_Bioinformatics_for_Immunologists
+git init
+```
+
+Now try to copy one folder under the current folder:
+
+```         
+cp -r ../../Intro_to_UNIX_and_bash_shell ./
+ls
+```
+
+Add the files in your new local repository. This stages them for the first commit:
+
+```         
+git add -A # or git add Intro_to_UNIX_and_bash_shell
+```
+
+This adds the files in the local repository and stages them for commit. To unstage a file, use 'git reset HEAD YOUR-FILE'.
+
+Check the status:
+
+```         
+git status
+```
+
+Commit the files that you've staged in your local repository:
+
+```         
+git commit -m "First commit"
+```
+
+Commits the tracked changes and prepares them to be pushed to a remote repository. To remove this commit and modify the file, use 'git reset --soft HEAD\~1' and commit and add the file again.
+
+You can now check the log of the commit history:
+
+```         
+git log # Press 'q' to quit the log page 
+```
+
+### Adding a local repository to GitHub using Git
+
+Before you can add your local repository to GitHub using Git, you must authenticate to GitHub on the command line.
+
+You can access repositories on GitHub from the command line in two ways, HTTPS and SSH, and both have a different way of authenticating. Here we will teach you how to authenticate without GitHub CLI over SSH.
+
+If you authenticate without GitHub CLI, you will need to generate an SSH public/private keypair on your local machine and add the public key to your account on GitHub.com. Every time you use Git to authenticate with GitHub, you'll be prompted to enter your SSH key passphrase, unless you've [stored the key](https://docs.github.com/en/authentication/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#adding-your-ssh-key-to-the-ssh-agent).
+
+#### Generating a new SSH key
+
+You can generate a new SSH key on your local machine. After you generate the key, you can add the public key to your account on GitHub.com to enable authentication for Git operations over SSH.
+
+1.  Open the terminal and run:
+
+    ```         
+    mkdir -p ~/.ssh
+    cd ~/.ssh
+    ssh-keygen -t ed25519 -f github_key -C "your_github_email@example.com" -N ''
+    cat ~/.ssh/github_key.pub
+    ```
+
+    Please note that you need to generate a key in each working machine that will be used for pushing code to GitHub.
+
+2.  Select and copy the last command's output (i.e. SSH key)
+
+3.  Open a browser and then go to [GitHub SSH keys](https://github.com/settings/keys). Click 'New SSH key'
+
+4.  Enter a name for the new SSH key that will be added and select "Authentication Key" from the dropdown menu.
+
+5.  Paste the SSH key from *step 3* in the "Key" field
+
+6.  Return to the VM's Terminal and create a `config` file in the `~/.ssh/` directory.
+
+    ```         
+    touch ~/.ssh/config
+    ```
+
+7.  Open the `config` file using a text editor (e.g. emacs,nano or vim) and paste in the following content:
+
+    ```         
+    Host github.com
+        HostName github.com
+        IdentityFile ~/.ssh/github_key
+    ```
+
+    The `config` file allows you to specify which SSH key to use for each machine/application connection. It becomes even more useful when multiple SSH keys are stored in the `~/.ssh/` directory to interact with different machines.
+
+Now you have successfully generated a key and add it to your Github. We can start adding our local repository to GitHub.
+
+1.  Create a new repository on GitHub.com. To avoid errors, do not initialize the new repository with README, license, or gitignore files. You can add these files after your project has been pushed to GitHub.
+
+2.  At the top of your repository on GitHub.com's Quick Setup page, copy the remote repository URL.
+
+3.  Open Terminal.
+
+4.  Change the current working directory to your local project.
+
+5.  To add the URL for the remote repository where your local repository will be pushed, run the following command. Replace `REMOTE-URL` with the repository's full URL on GitHub.
+
+    ```         
+    git remote add origin REMOTE-URL
+    ```
+
+6.  To verify that you set the remote URL correctly, run the following command.
+
+    ```         
+    git remote -v
+    ```
+
+7.  To push the changes in your local repository to GitHub.com, run the following command.
+
+    ```         
+    git push -u origin <main or master>
+    ```
+
+Now you will see the file in your Github. If the remote repository changes frequently, we need to do a pull every time to ensure our local repository is up to date:
+
+```         
+git pull
+```
+
+### Remove files on Github
+
+Now you might want to remove your uploaded file. Lets now remove the previously uploaded folder.
+
+```         
+git rm -r Intro_to_UNIX_and_bash_shell/
+```
+
+Now check the status:
+
+```         
+git status
+```
+
+We can now commit the changes and push them:
+
+```         
+git commit -m "Delete Intro_to_UNIX_and_bash_shell/"
+```
+
+```         
+git push 
+```
+
+Now you can see the folder `Intro_to_UNIX_and_bash_shell` is deleted on Github.
+
+Alternatively you can replace `git rm -r` by two steps to achieve the same outcome:
+
+```         
+rm <file>
+git add <file>
+```
+
+### Branches
+
+In Git, a branch is a new/separate version of the main repository. Go back to our example:
+
+```         
+git branch
+```
+
+We can see that we only have one branch.
+
+Let’s create a new branch `new`.
+
+```         
+git branch new
+```
+
+Now we have two branches:
+
+```         
+git branch
+```
+
+Now to switch to `new` using `git checkout new`
+
+```         
+git checkout new 
+```
+
+Now let's make a new commit on `new` branch.
+
+```         
+cp -r ../../Intro_to_R ./
+git add -A
+git commit -m "new branch first commit"
+git push -u origin new
+```
+
+We can now see the folder appeared in the `new` branch, where nothing else happened for the `main` branch as expected. We can also see the new commit in the log.
+
+```         
+git log
+```
+
+At some points you might want to merge the content of two branches. Suppose we want to merge the `new` branch into the `main` branch. To do this, we first need to go to `main` branch:
+
+```         
+git checkout <main or master>
+```
+
+then start merging:
+
+```         
+git merge new
+git commit -m "first merge main and new"
+git push origin <main or master>
+```
+
+We can now see the file appearing in `main` branch.
+
+### Branch merging with conflict
+
+Now suppose we change the first row of `my_Bioinformatics_for_Immunologists/Intro_to_R/my_example.csv` to "first row (main)".
+
+```         
+git add -A
+git commit -m "change first row in my_example.csv (master)"
+git push origin <main or master>
+```
+
+Now lets merge `main` into `new` branch.
+
+```         
+git checkout new
+```
+
+then change the first row of `my_Bioinformatics_for_Immunologists/Intro_to_R/my_example.csv` to "first row (new)".
+
+```         
+git add -A
+git commit -m "change first row in my_example.csv (new)"
+git push origin new
+```
+
+Now we can try to merge:
+
+```         
+git merge main
+```
+
+We will see the following error:
+
+```         
+Auto-merging Intro_to_R/my_example.csv
+CONFLICT (content): Merge conflict in Intro_to_R/my_example.csv
+Automatic merge failed; fix conflicts and then commit the result.
+```
+
+We can check out the conflict:
+
+```         
+git diff
+```
+
+```         
+diff --cc Intro_to_R/my_example.csv
+index 4fdbd18,c23c710..0000000
+--- a/Intro_to_R/my_example.csv
++++ b/Intro_to_R/my_example.csv
+@@@ -1,4 -1,4 +1,8 @@@
+++<<<<<<< HEAD
+ +first row (new)
+++=======
++ first row (main)
+++>>>>>>> main
+```
+
+To resolve the change we can go to the target file `Intro_to_R/my_example.csv`.
+
+```         
+# <<<<<<< HEAD
+# first row (new)
+# =======
+# first row (main)
+# >>>>>>> main
+# 2000,Electronics,High-End,10210,2550,755
+# ...
+```
+
+keep the one you want:
+
+```         
+first row (new)
+2000,Electronics,High-End,10210,2550,755
+...
+```
+
+After resolving the changes, we now make another commit:
+
+```         
+git add -A
+git commit -m "change first row in my_example.csv (resolve conflict)"
+git push origin new
+```
+
+Alternatively, you can abort merge:
+
+```         
+git merge --abort
+```
+
+Having done everything we wanted with `new` branch, we now need to delete it:
+
+```         
+git checkout main
+git branch -d new
+# git branch -D new
+```
+
+Lastly, you can download any repository using `git clone`:
+
+```         
+git clone URL
+```
+
+## Exercise
+
+As an exercise, you can upload everything we have covered to your own GitHub repository.
