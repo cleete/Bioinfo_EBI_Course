@@ -1,0 +1,221 @@
+---
+title: "TCRseq - Project"
+output: html_document
+date: "2024-07-03"
+---
+
+## Project
+
+In this exercise, you'll analyze data from Chen R, Lukianova E, van der Loeff IS et al., "NUDCD3 deficiency disrupts V(D)J recombination to cause SCID and Omenn syndrome", Sci Immunol. 2024.
+
+This study describes how the missense mutations in a gene Nudcd3, previously not implicated in any immune functions, lead to inborn deficiency errors and Omenn syndrome, as this gene turns out to be crucial for V(D)J recombination.
+
+### Data
+
+The data included are results of scTCRseq sequencing for a subset of human samples (files SAMPLE_clonotypes.csv, SAMPLE_consensus_annotation.csv.gz). SAMPLE_clonotypes.csv contains solved TCRs (matched TRA/TRB, frequency of clonotypes etc.). SAMPLE_consensus_annotation.csv.gz is split by each identified chain contig and has info about the barcodes they match (so there might be more than one row per barcode). I've also included cell-level data derived from scRNAseq in the CELLSUBSET.metadata_umap.tsv.gz files. For each barcode, there is available info about assigned celltype and UMAP coordinates. UMAPs were prepared either for all cells together or the separate subsets. These files contain info from all samples in the study, not only the above 4.
+
+The same barcode might by chance be present in more than one experiment, so when matching barcodes across files, you need to match by individual and by barcode.
+
+### Possible directions
+
+-   We've observed differences between TRAJ genes usage in mice. Is it true also for humans? How celltype influences TRAJ usage?
+
+-   What about diversity of TCRs in patients and controls? Discuss limitations and possible improvements of this approach.
+
+-   Cell types in patients versus controls - compare frequencies of different celltypes, plot UMAPs to visualise this. Discuss limitations and possible improvements of this approach.
+
+-   Is there a celltype less successful in TCR assignement?
+
+
+```{r}
+library("tidyverse")
+```
+
+
+```{r}
+#Read in files
+
+Ctrl_1 <-read.csv(file = "data/CTRL_1_clonotypes.csv")
+Ctrl_1_annot <- read.csv(file = "data/CTRL_1_consensus_annotation.csv.gz")
+Ctrl_3 <-read.csv(file = "data/CTRL_3_clonotypes.csv")
+Ctrl_3_annot <- read.csv(file = "data/CTRL_3_consensus_annotation.csv.gz")
+NUDCD3_1 <-read.csv(file = "data/NUDCD3_1_clonotypes.csv")
+NUDCD3_1_annot <- read.csv(file = "data/NUDCD3_1_consensus_annotation.csv.gz")
+NUDCD3_3 <-read.csv(file = "data/NUDCD3_3_clonotypes.csv")
+NUDCD3_3_annot <- read.csv(file = "data/NUDCD3_3_consensus_annotation.csv.gz")
+
+```
+
+
+```{r}
+Ctrl_1_join <- left_join(Ctrl_1, Ctrl_1_annot, by = "clonotype_id")
+samples <- c("CTRL_1", "CTRL_3", "NUDCD3_1", "NUDCD3_3")
+
+input_files <- c(Ctrl_1, Ctrl_3, NUDCD3_1, NUDCD3_3)
+annot_files <- c(Ctrl_1_annot, )
+joined_files <- list()
+
+for (variable in input_files) {
+  joined_files <- left_join(input_files, annot_files, by = "clonotype_id")
+}
+
+#Create a list of all the sample files
+samples <- c("CTRL_1", "CTRL_3", "NUDCD3_1", "NUDCD3_3")
+tables_clonotypes <-list()
+for (sample in samples) {
+ # "NUDCD3_3 <-read.csv(file = 
+  filename <-paste0("data/", sample,"_clonotypes.csv")
+  tables_clonotypes[[sample]] <- read_csv(filename)
+  colnames(tables_clonotypes[[sample]]) <-c("clonotype_id", "frequency", "proportion", "cdr3s_aa", "cdr3s_nt")
+}                 
+
+#Create a list of all the annotation files
+tables_annotation <-list()
+for (sample in samples) {
+ # "NUDCD3_3 <-read.csv(file = 
+  filename <-paste0("data/", sample,"_consensus_annotation.csv.gz")
+  tables_annotation[[sample]] <- read_csv(filename)
+}
+
+#Joining the lists together using a for loop
+joined_sample_annotation <- list()
+for (x in samples){
+     joined_sample_annotation[[x]] <- left_join(tables_clonotypes[[x]], tables_annotation[[x]], by = "clonotype_id")
+}
+
+joined_sample_annotation
+
+# Select columns of interest
+selected_list <- list()
+for (x in samples) {
+  selected_list[[x]] <- select(joined_sample_annotation[[x]], "clonotype_id", "frequency", "proportion", "j_gene") |> filter(grepl(pat = "TRAJ", x = j_gene))
+}
+
+#Combine lists into one tables
+combined_list <- bind_rows(selected_list, .id= "samples")
+
+#Plot j_gene by proportion
+library("ggplot2")
+
+traj_boxplots <- combined_list%>%
+  ggplot(aes( y=proportion, x=j_gene, fill=samples, col=samples))+
+  geom_boxplot()+
+  coord_flip()
+
+
+traj_boxplots
+
+
+#combined individuals in the same group through mutate()
+combined_list <- mutate(combined_list, health=gsub(pattern = "_.*", "", samples))
+
+traj_boxplots <- combined_list%>%
+  ggplot(aes( y=proportion, x=j_gene, fill=health, col=health))+
+  geom_boxplot()+
+  coord_flip()
+
+#group by proportions of the same j_gene and per patient
+combined_list1 <- group_by(combined_list, samples, j_gene) %>%
+  summarise(sumJ =sum(proportion))
+
+
+#Add overarching group
+combined_list1 <- mutate(combined_list1, health=gsub(pattern = "_.*", "", samples))
+
+combined_list1 <- arrange(combined_list1, by_group = j_gene)
+
+#Plot
+traj_boxplots <- combined_list1%>%
+  ggplot(aes(y=sumJ, x=j_gene, fill=health, col=health))+
+  geom_point()+
+  coord_flip()
+
+traj_boxplots
+
+#Plot with nice numeric order
+combined_list2 <- mutate(combined_list1, Traj_num=gsub(pattern = "TRAJ*", "", j_gene))
+combined_list2 <- arrange(combined_list2, by_group = as.numeric(Traj_num))
+combined_list2<- combined_list2%>%mutate(j_gene=factor(j_gene, levels=paste0("TRAJ",1:58)))
+traj_boxplots <- combined_list2%>%
+  ggplot(aes(y=sumJ, x=j_gene, fill=health, col=health))+
+  geom_point()+
+  coord_flip()
+
+traj_boxplots
+
+combined_list2$Traj_num
+
+```
+
+```{r}
+#Lets try to rearrange it by genomic locus
+library(rvest)
+webpage <- read_html("https://www.imgt.org/IMGTrepertoire/index.php?section=LocusGenes&repertoire=GenePositions&species=mouse&group=TRA")
+tbls <- html_nodes(webpage, "table")
+
+locus_table <- tbls[[1]]%>%
+     html_table(fill = TRUE)
+
+#split columns,change data to numeric
+locus_table <- locus_table%>%
+  separate(., col="Gene positions in sequence", sep = "\\.\\.",into=c("start","end"))%>%
+  mutate(start=as.integer(start), end=as.integer(end))%>%select(`IMGT Gene`, start, end)%>%
+  arrange(start)
+
+locus_table
+
+#Now add the this table information to the proportion tables from earlier
+combined_list2 <- combined_list2%>%
+  left_join(.,locus_table%>%select("IMGT Gene", "start"), by=c("j_gene"="IMGT Gene") )
+
+#plot the table with the gene locus information
+combined_list2 %>%
+  ggplot(aes(y=sumJ, x=as.integer(start), col=health, group=health))+
+  geom_point() +
+  stat_smooth(method=lm)+
+  labs(x="Genome Location", y="Cummulative Frequency of J genes", colour="Mouse Model")
+
+
+```
+
+```{r}
+#Lets try to identify the TCR diversity
+#First remove rows where CDR3 is not known
+#As reminder the joint_sample_annotation contains four tables with all the annotation and sample information
+
+#check setup of the data again
+view(joined_sample_annotation$CTRL_1)
+
+#
+clones_list <- list()
+for (x in samples) {
+  clones_list[[x]] <- joined_sample_annotation[[x]]%>%
+  filter(!is.na(cdr3))%>%
+  group_by(cdr3)%>%
+  summarise(N=n())%>%
+  arrange(desc(N))
+}
+
+view(clones_list$CTRL_1)
+
+
+samples_df <- bind_rows(clones_list, .id="sample")
+view(samples_df)
+
+diversity_measures <- samples_df %>%
+  group_by(sample)%>%
+  summarise( no_of_clones=length(N),
+             no_of_cells=sum(N),
+             shannon =vegan::diversity(N),
+             evenness= shannon/log(no_of_clones))
+
+view(diversity_measures)
+
+diversity_measures%>%
+  ggplot(aes(x=sample, y=shannon, col=sample))+ #+facet_wrap(~measure, scales="free_y") 
+  geom_point(size=4)
+
+ggplot(diversity_measures, aes(x = sample, y=evenness))+ #+facet_wrap(~measure, scales="free_y") 
+  geom_bar()
+```
+
